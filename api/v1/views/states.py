@@ -1,89 +1,63 @@
 #!/usr/bin/python3
-"""States views"""
-from flask import jsonify, make_response, abort, request
+"""State objects that handles all default RESTFul API actions"""
+
 from api.v1.views import app_views
 from models import storage
 from models.state import State
+from flask import abort, request, jsonify
 
 
-@app_views.route('/states',
-                 strict_slashes=False,
-                 methods=['GET', 'POST'])
-def view_states():
-    """Returns the list of all State objects"""
-    if request.method == 'POST':
-
-        # Get the attributes from the request
-        data = request.get_json()
-
-        if isinstance(data, dict):
-            pass
-        else:
-            return (jsonify({"error": "Not a JSON"}), 400)
-
-        if 'name' not in data.keys():
-            return jsonify({'error': 'Missing name'}), 400
-
-        if 'id' in data.keys():
-            data.pop("id")
-        if 'created_at' in data.keys():
-            data.pop("created_at")
-        if 'updated_at' in data.keys():
-            data.pop("updated_at")
-
-        # Create the object
-        obj = State(**data)
-
-        # Save the object in storage
-        storage.new(obj)
-        storage.save()
-        return jsonify(obj.to_dict()), 201
-
-    if request.method == 'GET':
-        states = storage.all("State")
-        list = []
-        for name, state in states.items():
-            list.append(state.to_dict())
-        return jsonify(list)
+@app_views.route("/states", strict_slashes=False, methods=["GET"])
+@app_views.route("/states/<state_id>", strict_slashes=False, methods=["GET"])
+def states(state_id=None):
+    """show states and states with id"""
+    states_list = []
+    if state_id is None:
+        all_objs = storage.all(State).values()
+        for v in all_objs:
+            states_list.append(v.to_dict())
+        return jsonify(states_list)
+    else:
+        result = storage.get(State, state_id)
+        if result is None:
+            abort(404)
+        return jsonify(result.to_dict())
 
 
-@app_views.route('/states/<id>',
-                 strict_slashes=False,
-                 methods=['GET', 'DELETE', 'PUT'])
-def view_state(id):
-    """Returns a list of all State objects, or delete an
-    object if a given id
-    """
-    state = storage.get(State, id)
+@app_views.route("/states/<state_id>", strict_slashes=False,
+                 methods=["DELETE"])
+def states_delete(state_id):
+    """delete method"""
+    obj = storage.get(State, state_id)
+    if obj is None:
+        abort(404)
+    storage.delete(obj)
+    storage.save()
+    return jsonify({}), 200
 
-    if state is None:
-        return abort(404)
 
-    if request.method == 'GET':
-        state = state.to_dict()
-        return jsonify(state)
+@app_views.route("/states", strict_slashes=False, methods=["POST"])
+def create_state():
+    """create a new post req"""
+    data = request.get_json(force=True, silent=True)
+    if not data:
+        abort(400, "Not a JSON")
+    if "name" not in data:
+        abort(400, "Missing name")
+    new_state = State(**data)
+    new_state.save()
+    return jsonify(new_state.to_dict()), 201
 
-    if request.method == 'DELETE':
-        storage.delete(state)
-        storage.save()
-        return jsonify({}), 200
 
-    if request.method == 'PUT':
-        data = request.get_json()
-        if isinstance(data, dict):
-            pass
-        else:
-            return (jsonify({"error": "Not a JSON"}), 400)
-
-        if 'id' in data.keys():
-            data.pop("id")
-        if 'created_at' in data.keys():
-            data.pop("created_at")
-        if 'updated_at' in data.keys():
-            data.pop("updated_at")
-
-        for key, value in data.items():
-            setattr(state, key, value)
-
-        storage.save()
-        return jsonify(state.to_dict())
+@app_views.route("/states/<state_id>", strict_slashes=False, methods=["PUT"])
+def update_state(state_id):
+    """update state"""
+    obj = storage.get(State, state_id)
+    if obj is None:
+        abort(404)
+    data = request.get_json(force=True, silent=True)
+    if not data:
+        abort(400, "Not a JSON")
+    obj.name = data.get("name", obj.name)
+    obj.save()
+    return jsonify(obj.to_dict()), 200
